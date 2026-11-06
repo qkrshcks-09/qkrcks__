@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Egg Catching & Launching Game</title>
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&family=Nunito:wght@700;800;900&display=swap');
+        
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            font-family: 'Jua', 'Nunito', sans-serif;
+            background: radial-gradient(circle at center, #1e1b4b 0%, #0f172a 100%);
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            max-width: 480px;
+            max-height: 850px;
+            margin: 0 auto;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.5), 0 0 40px rgba(251, 191, 36, 0.15);
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #0f172a 0%, #1e1b4b 40%, #311b92 100%);
+        }
+
+        .custom-button {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 8px 0 #d97706, 0 15px 25px rgba(217, 119, 6, 0.4);
+        }
+
+        .custom-button:active {
+            transform: translateY(4px);
+            box-shadow: 0 3px 0 #d97706, 0 5px 10px rgba(217, 119, 6, 0.4);
+        }
+
+        /* Dynamic Floating Scores */
+        @keyframes float-text {
+            0% { transform: translateY(0) scale(0.8); opacity: 0; }
+            20% { transform: translateY(-10px) scale(1.2); opacity: 1; }
+            100% { transform: translateY(-50px) scale(1.4); opacity: 0; }
+        }
+
+        .floating-score {
+            position: absolute;
+            animation: float-text 0.85s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+            pointer-events: none;
+            font-weight: 900;
+            color: #fef08a;
+            text-shadow: 0 4px 12px rgba(0,0,0,0.8), 0 0 10px rgba(250, 204, 21, 0.8);
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <div id="game-container" class="rounded-3xl overflow-hidden relative border-4 border-amber-300/40">
+        <!-- Canvas Element -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Dynamic Floating Scores overlay -->
+        <div id="popups" class="absolute inset-0 pointer-events-none z-20"></div>
+
+        <!-- UI Header (Score & Combo) -->
+        <div class="absolute top-4 left-4 right-4 flex justify-between items-center z-10 pointer-events-none">
+            <!-- Score Card -->
+            <div class="bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl shadow-xl border border-amber-400/40 flex items-center gap-2">
+                <span class="text-2xl animate-pulse">🥚</span>
+                <div>
+                    <div class="text-[10px] text-amber-300 uppercase tracking-widest font-black">점수</div>
+                    <div id="score-text" class="text-2xl font-black text-amber-400 leading-none drop-shadow">0</div>
+                </div>
+            </div>
+
+            <!-- Best Score Card -->
+            <div class="bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl shadow-xl border border-purple-400/40 flex items-center gap-2">
+                <span class="text-2xl">🏆</span>
+                <div>
+                    <div class="text-[10px] text-purple-300 uppercase tracking-widest font-black">최고 기록</div>
+                    <div id="best-score-text" class="text-2xl font-black text-purple-400 leading-none drop-shadow">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Combo Counter Overlay -->
+        <div id="combo-container" class="absolute top-20 left-1/2 -translate-x-1/2 pointer-events-none z-10 text-center opacity-0 transition-all duration-300 transform scale-90">
+            <span id="combo-text" class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-orange-500 drop-shadow-[0_4px_10px_rgba(251,191,36,0.6)] italic tracking-wider">
+                2 COMBO!
+            </span>
+        </div>
+
+        <!-- Start Overlay -->
+        <div id="start-menu" class="absolute inset-0 bg-slate-950/70 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-center">
+            <div class="bg-slate-900/90 rounded-3xl p-8 max-w-xs w-full shadow-2xl border border-amber-400/30 flex flex-col items-center">
+                <div class="text-7xl mb-4 animate-bounce drop-shadow-[0_10px_20px_rgba(251,191,36,0.4)]">🥚</div>
+                <h1 class="text-3xl font-black text-amber-400 mb-2 tracking-wide">계란 던지기!</h1>
+                <p class="text-slate-300 text-xs mb-6 leading-relaxed">
+                    계란을 드래그하여 조준하고 놓으면 슈팅됩니다!<br>
+                    <span class="text-amber-300 font-bold">장애물을 피해서 1000점에 도전하세요!</span>
+                </p>
+                <button id="start-btn" class="custom-button w-full py-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xl rounded-2xl border-2 border-amber-200">
+                    게임 시작 🚀
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Over Overlay -->
+        <div id="game-over-menu" class="absolute inset-0 bg-slate-950/80 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-center hidden">
+            <div class="bg-slate-900/90 rounded-3xl p-8 max-w-xs w-full shadow-2xl border border-rose-500/30 flex flex-col items-center animate-fade-in">
+                <div class="text-7xl mb-3">🍳</div>
+                <h2 class="text-3xl font-black text-rose-400 mb-1">GAME OVER</h2>
+                <p class="text-slate-400 text-xs mb-5">계란이 깨지고 말았습니다!</p>
+                
+                <div class="bg-slate-800/80 rounded-2xl w-full p-4 mb-6 border border-slate-700/80 flex justify-around">
+                    <div>
+                        <div class="text-[10px] text-amber-400 font-black uppercase">최종 점수</div>
+                        <div id="final-score" class="text-3xl font-black text-amber-300">0</div>
+                    </div>
+                    <div class="border-r border-slate-700"></div>
+                    <div>
+                        <div class="text-[10px] text-purple-400 font-black uppercase">최고 점수</div>
+                        <div id="final-best" class="text-3xl font-black text-purple-300">0</div>
+                    </div>
+                </div>
+
+                <button id="restart-btn" class="custom-button w-full py-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xl rounded-2xl border-2 border-amber-200">
+                    다시 시도 🔄
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Clear Overlay -->
+        <div id="game-clear-menu" class="absolute inset-0 bg-slate-950/85 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-center hidden">
+            <div class="bg-slate-900/90 rounded-3xl p-8 max-w-xs w-full shadow-2xl border border-emerald-400/40 flex flex-col items-center">
+                <div class="text-7xl mb-3 animate-bounce">👑</div>
+                <h2 class="text-3xl font-black text-emerald-400 mb-1 tracking-wider">MISSION CLEAR!</h2>
+                <p class="text-slate-300 text-xs mb-5">전설의 마스터! 1000점 달성 성공! 🎉</p>
+                
+                <div class="bg-slate-800/80 rounded-2xl w-full p-4 mb-6 border border-emerald-500/30 flex justify-center">
+                    <div>
+                        <div class="text-[10px] text-emerald-400 font-black uppercase">최종 점수</div>
+                        <div id="clear-final-score" class="text-4xl font-black text-emerald-300">1000</div>
+                    </div>
+                </div>
+
+                <button id="clear-restart-btn" class="custom-button w-full py-4 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xl rounded-2xl border-2 border-emerald-200">
+                    다시 도전하기 🚀
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Game Logic & Mechanics
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const popupsContainer = document.getElementById('popups');
+
+        // UI Elements
+        const scoreText = document.getElementById('score-text');
+        const bestScoreText = document.getElementById('best-score-text');
+        const finalScoreText = document.getElementById('final-score');
+        const finalBestText = document.getElementById('final-best');
+        const clearFinalScoreText = document.getElementById('clear-final-score');
+        const comboContainer = document.getElementById('combo-container');
+        const comboText = document.getElementById('combo-text');
+        const startMenu = document.getElementById('start-menu');
+        const gameOverMenu = document.getElementById('game-over-menu');
+        const gameClearMenu = document.getElementById('game-clear-menu');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const clearRestartBtn = document.getElementById('clear-restart-btn');
+
+        // Game State
+        let width = 0;
+        let height = 0;
+        let score = 0;
+        let bestScore = localStorage.getItem('egg_game_best') || 0;
+        let combo = 0;
+        let gameState = 'START';
+        let cameraY = 0;
+        let targetCameraY = 0;
+
+        // Drag Handling
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let dragCurrent = { x: 0, y: 0 };
+
+        // Physics Constants
+        const GRAVITY = 0.38;
+        const LAUNCH_POWER = 0.16;
+        const MAX_DRAG = 120;
+
+        // Visual Particles & Trails
+        let particles = [];
+        let trails = [];
+        let eggYolkSplats = [];
+        let stars = [];
+
+        // Game Entities
+        let egg = {
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            radiusX: 13,
+            radiusY: 18,
+            rotation: 0,
+            vRot: 0,
+            isFlying: false,
+            currentBasket: null
+        };
+
+        let baskets = [];
+        let obstacles = [];
+
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            width = container.clientWidth;
+            height = container.clientHeight;
+            
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+
+            // Generate background stars
+            stars = [];
+            for(let i = 0; i < 40; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height * 3,
+                    size: Math.random() * 2 + 1,
+                    alpha: Math.random() * 0.8 + 0.2
+                });
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Basket Class Definition
+        class Basket {
+            constructor(id, y, level) {
+                this.id = id;
+                this.width = Math.max(68, 115 - level * 2.2);
+                this.height = 24;
+                this.x = Math.random() * (width - this.width - 60) + 30;
+                this.y = y;
+                this.level = level;
+                this.speed = (Math.random() > 0.5 ? 1 : -1) * Math.min(1.2 + level * 0.18, 4.8);
+                this.bounceAnim = 0;
+            }
+
+            update() {
+                if (this.level > 0) {
+                    this.x += this.speed;
+                    if (this.x <= 20 || this.x + this.width >= width - 20) {
+                        this.speed *= -1;
+                    }
+                }
+                if (this.bounceAnim > 0) {
+                    this.bounceAnim -= 0.1;
+                }
+            }
+
+            draw(ctx, camY) {
+                const drawY = this.y - camY + Math.sin(this.bounceAnim * Math.PI) * 4;
+                ctx.save();
+
+                // Glow Shadow
+                ctx.shadowColor = 'rgba(245, 158, 11, 0.3)';
+                ctx.shadowBlur = 12;
+
+                // Basket Base Rim
+                ctx.fillStyle = '#b45309';
+                ctx.beginPath();
+                ctx.roundRect(this.x, drawY, this.width, this.height, 8);
+                ctx.fill();
+
+                // Inner Weave Detail Pattern
+                ctx.fillStyle = '#78350f';
+                ctx.beginPath();
+                ctx.roundRect(this.x + 4, drawY + 4, this.width - 8, this.height - 8, 4);
+                ctx.fill();
+
+                // Golden Top Rim Highlight
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath();
+                ctx.roundRect(this.x - 3, drawY - 2, this.width + 6, 7, 4);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // Frying Pan Obstacle Class
+        class Obstacle {
+            constructor(y, level) {
+                this.radius = 20;
+                this.y = y;
+                this.x = Math.random() * (width - 120) + 60;
+                this.speed = (Math.random() > 0.5 ? 1 : -1) * Math.min(1.6 + level * 0.22, 4.2);
+                this.angle = Math.random() * Math.PI;
+            }
+
+            update() {
+                this.x += this.speed;
+                if (this.x <= 35 || this.x >= width - 35) {
+                    this.speed *= -1;
+                }
+                this.angle += 0.04;
+            }
+
+            draw(ctx, camY) {
+                const drawY = this.y - camY;
+                ctx.save();
+                ctx.translate(this.x, drawY);
+                ctx.rotate(Math.sin(this.angle) * 0.25);
+
+                // Pan Handle
+                ctx.fillStyle = '#374151';
+                ctx.fillRect(-this.radius - 14, -5, 16, 10);
+
+                // Frying Pan Outer Metal Rim
+                ctx.fillStyle = '#1e293b';
+                ctx.shadowColor = 'rgba(239, 68, 68, 0.4)';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Frying Surface & Heat Rim
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+
+                // Hot Flame/Oil Core
+                ctx.fillStyle = '#f87171';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 0.45, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // Initialize Game
+        function initGame() {
+            score = 0;
+            combo = 0;
+            cameraY = 0;
+            targetCameraY = 0;
+            particles = [];
+            trails = [];
+            eggYolkSplats = [];
+            baskets = [];
+            obstacles = [];
+
+            bestScoreText.textContent = bestScore;
+            scoreText.textContent = '0';
+            comboContainer.classList.add('opacity-0');
+            gameClearMenu.classList.add('hidden');
+            gameOverMenu.classList.add('hidden');
+
+            // Generate Baskets & Obstacles
+            const firstBasket = new Basket(0, height - 120, 0);
+            firstBasket.x = width / 2 - firstBasket.width / 2;
+            baskets.push(firstBasket);
+
+            for (let i = 1; i < 5; i++) {
+                const basketY = height - 120 - i * 165;
+                baskets.push(new Basket(i, basketY, i));
+
+                if (i >= 2) {
+                    obstacles.push(new Obstacle(basketY + 80, i));
+                }
+            }
+
+            // Lock Egg in 1st Basket
+            egg.currentBasket = firstBasket;
+            egg.x = firstBasket.x + firstBasket.width / 2;
+            egg.y = firstBasket.y - egg.radiusY + 4;
+            egg.vx = 0;
+            egg.vy = 0;
+            egg.rotation = 0;
+            egg.vRot = 0;
+            egg.isFlying = false;
+
+            gameState = 'PLAYING';
+        }
+
+        // Create Feather / Dust Particles
+        function createFeatherParticles(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4 - 1,
+                    size: Math.random() * 4 + 2,
+                    color: '#fef3c7',
+                    alpha: 1,
+                    decay: 0.03,
+                    rot: Math.random() * Math.PI
+                });
+            }
+        }
+
+        // Splat Crack Effect
+        function createCrackSplat(x, y) {
+            eggYolkSplats.push({
+                x: x,
+                y: y,
+                size: Math.random() * 16 + 22,
+                alpha: 1
+            });
+
+            for (let i = 0; i < 24; i++) {
+                const isShell = Math.random() > 0.45;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 12,
+                    vy: (Math.random() - 0.5) * 12 - 4,
+                    size: isShell ? Math.random() * 6 + 3 : Math.random() * 9 + 4,
+                    color: isShell ? '#fffbeb' : '#fbbf24',
+                    alpha: 1,
+                    decay: Math.random() * 0.025 + 0.015,
+                    rot: Math.random() * Math.PI,
+                    isShell: isShell
+                });
+            }
+        }
+
+        // Floating Text Popups
+        function showFloatingText(text, x, y) {
+            const popup = document.createElement('div');
+            popup.className = 'floating-score text-3xl font-black';
+            popup.textContent = text;
+            popup.style.left = `${x - 35}px`;
+            popup.style.top = `${y - cameraY - 20}px`;
+            popupsContainer.appendChild(popup);
+
+            setTimeout(() => {
+                popup.remove();
+            }, 850);
+        }
+
+        // User Input Controls
+        function getEventPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        function handleStart(e) {
+            if (gameState !== 'PLAYING' || egg.isFlying) return;
+            const pos = getEventPos(e);
+            const eggScreenY = egg.y - cameraY;
+            const dist = Math.hypot(pos.x - egg.x, pos.y - eggScreenY);
+
+            if (dist < 90) {
+                isDragging = true;
+                dragStart = pos;
+                dragCurrent = pos;
+            }
+        }
+
+        function handleMove(e) {
+            if (!isDragging) return;
+            dragCurrent = getEventPos(e);
+        }
+
+        function handleEnd() {
+            if (!isDragging) return;
+            isDragging = false;
+            if (gameState !== 'PLAYING' || egg.isFlying) return;
+
+            const dx = dragStart.x - dragCurrent.x;
+            const dy = dragStart.y - dragCurrent.y;
+            const dragDistance = Math.hypot(dx, dy);
+
+            if (dragDistance > 15) {
+                const angle = Math.atan2(dy, dx);
+                const power = Math.min(dragDistance, MAX_DRAG) * LAUNCH_POWER;
+
+                egg.vx = Math.cos(angle) * power;
+                egg.vy = Math.sin(angle) * power;
+                egg.vRot = (Math.random() - 0.5) * 0.35;
+                egg.isFlying = true;
+                egg.currentBasket = null;
+
+                createFeatherParticles(egg.x, egg.y, 8);
+            }
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+
+        canvas.addEventListener('touchstart', handleStart, { passive: false });
+        canvas.addEventListener('touchmove', handleMove, { passive: false });
+        window.addEventListener('touchend', handleEnd);
+
+        // Core Physics Update Loop
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            baskets.forEach(b => b.update());
+            obstacles.forEach(o => o.update());
+
+            if (!egg.isFlying && egg.currentBasket) {
+                egg.x = egg.currentBasket.x + egg.currentBasket.width / 2;
+                egg.y = egg.currentBasket.y - egg.radiusY + 4;
+            } else if (egg.isFlying) {
+                egg.x += egg.vx;
+                egg.y += egg.vy;
+                egg.vy += GRAVITY;
+                egg.rotation += egg.vRot;
+
+                // Add Sparkle Trail Particles
+                trails.push({
+                    x: egg.x,
+                    y: egg.y,
+                    size: Math.random() * 4 + 2,
+                    alpha: 0.8
+                });
+
+                // Wall Bounce
+                if (egg.x - egg.radiusX < 10) {
+                    egg.x = 10 + egg.radiusX;
+                    egg.vx *= -0.75;
+                } else if (egg.x + egg.radiusX > width - 10) {
+                    egg.x = width - 10 - egg.radiusX;
+                    egg.vx *= -0.75;
+                }
+
+                // Check Obstacle Collision
+                for (let i = 0; i < obstacles.length; i++) {
+                    const obs = obstacles[i];
+                    const dist = Math.hypot(egg.x - obs.x, egg.y - obs.y);
+
+                    if (dist < egg.radiusX + obs.radius) {
+                        triggerGameOver();
+                        return;
+                    }
+                }
+
+                // Check Landing on Basket
+                if (egg.vy > 0) {
+                    for (let i = 0; i < baskets.length; i++) {
+                        const b = baskets[i];
+                        if (egg.x >= b.x - 6 &&
+                            egg.x <= b.x + b.width + 6 &&
+                            egg.y + egg.radiusY >= b.y &&
+                            egg.y - egg.radiusY <= b.y + b.height) {
+                            
+                            landOnBasket(b);
+                            break;
+                        }
+                    }
+                }
+
+                // Out of Bounds Failure
+                if (egg.y - cameraY > height + 60) {
+                    triggerGameOver();
+                }
+            }
+
+            // Camera Motion Tracking
+            targetCameraY = egg.y - height * 0.62;
+            cameraY += (targetCameraY - cameraY) * 0.1;
+
+            // Update Trails
+            trails.forEach((t, i) => {
+                t.alpha -= 0.04;
+                if (t.alpha <= 0) trails.splice(i, 1);
+            });
+
+            // Update Particles
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.15;
+                p.alpha -= p.decay;
+                p.rot += 0.05;
+
+                if (p.alpha <= 0) particles.splice(index, 1);
+            });
+        }
+
+        function landOnBasket(basket) {
+            egg.isFlying = false;
+            egg.vx = 0;
+            egg.vy = 0;
+            egg.rotation = 0;
+
+            if (egg.currentBasket !== basket) {
+                basket.bounceAnim = 1.0;
+                const passedBaskets = basket.id - (egg.currentBasket ? egg.currentBasket.id : 0);
+                egg.currentBasket = basket;
+
+                if (passedBaskets > 1) {
+                    combo += passedBaskets;
+                    score += passedBaskets * 20;
+                    showFloatingText(`SUPER! +${passedBaskets * 20}`, egg.x, egg.y);
+                } else {
+                    combo++;
+                    score += 10;
+                    showFloatingText(`+10`, egg.x, egg.y);
+                }
+
+                scoreText.textContent = score;
+
+                // 1000 Points Victory Trigger
+                if (score >= 1000) {
+                    triggerGameClear();
+                    return;
+                }
+
+                if (combo >= 2) {
+                    comboText.textContent = `${combo} COMBO!🔥`;
+                    comboContainer.classList.remove('opacity-0');
+                    comboContainer.classList.remove('scale-90');
+                    comboContainer.classList.add('scale-110');
+                }
+
+                createFeatherParticles(egg.x, egg.y + egg.radiusY, 10);
+
+                // Spawn Upward Level Objects
+                const topBasketY = baskets[baskets.length - 1].y;
+                const newLevel = baskets.length;
+                const newBasketY = topBasketY - 165 - Math.random() * 20;
+
+                baskets.push(new Basket(newLevel, newBasketY, newLevel));
+                obstacles.push(new Obstacle(newBasketY + 80, newLevel));
+
+                if (baskets.length > 8) baskets.shift();
+                if (obstacles.length > 8) obstacles.shift();
+            }
+        }
+
+        function triggerGameClear() {
+            if (gameState === 'GAMECLEAR') return;
+            gameState = 'GAMECLEAR';
+
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('egg_game_best', bestScore);
+            }
+
+            clearFinalScoreText.textContent = score;
+
+            setTimeout(() => {
+                gameClearMenu.classList.remove('hidden');
+            }, 500);
+        }
+
+        function triggerGameOver() {
+            if (gameState === 'GAMEOVER' || gameState === 'GAMECLEAR') return;
+            gameState = 'GAMEOVER';
+
+            createCrackSplat(egg.x, Math.min(egg.y, cameraY + height - 20));
+
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('egg_game_best', bestScore);
+            }
+
+            finalScoreText.textContent = score;
+            finalBestText.textContent = bestScore;
+
+            setTimeout(() => {
+                gameOverMenu.classList.remove('hidden');
+            }, 650);
+        }
+
+        // Render Canvas Scene
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            ctx.save();
+            
+            // Draw Stars & Background Atmosphere
+            stars.forEach(s => {
+                const drawY = (s.y - cameraY * 0.15) % (height * 1.5);
+                ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
+                ctx.beginPath();
+                ctx.arc(s.x, drawY < 0 ? drawY + height * 1.5 : drawY, s.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw Egg Yolk Splats
+            eggYolkSplats.forEach(s => {
+                ctx.fillStyle = `rgba(251, 191, 36, ${s.alpha})`;
+                ctx.beginPath();
+                ctx.ellipse(s.x, s.y - cameraY, s.size, s.size * 0.7, 0.4, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw Baskets & Obstacles
+            baskets.forEach(b => b.draw(ctx, cameraY));
+            obstacles.forEach(o => o.draw(ctx, cameraY));
+
+            // Draw Flying Particles & Motion Trails
+            trails.forEach(t => {
+                ctx.fillStyle = `rgba(253, 230, 138, ${t.alpha})`;
+                ctx.beginPath();
+                ctx.arc(t.x, t.y - cameraY, t.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            if (isDragging && !egg.isFlying) {
+                drawTrajectoryLine();
+            }
+
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.alpha);
+                ctx.translate(p.x, p.y - cameraY);
+                ctx.rotate(p.rot);
+                ctx.fillStyle = p.color;
+
+                if (p.isShell) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, -p.size);
+                    ctx.lineTo(p.size, p.size);
+                    ctx.lineTo(-p.size, p.size);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            // Draw Egg Entity
+            if (gameState !== 'GAMEOVER' || egg.isFlying) {
+                drawEgg();
+            }
+
+            ctx.restore();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Draw Glowing Trajectory Line
+        function drawTrajectoryLine() {
+            const dx = dragStart.x - dragCurrent.x;
+            const dy = dragStart.y - dragCurrent.y;
+            const dragDistance = Math.hypot(dx, dy);
+
+            if (dragDistance < 15) return;
+
+            const angle = Math.atan2(dy, dx);
+            const power = Math.min(dragDistance, MAX_DRAG) * LAUNCH_POWER;
+
+            let simVx = Math.cos(angle) * power;
+            let simVy = Math.sin(angle) * power;
+            let simX = egg.x;
+            let simY = egg.y;
+
+            ctx.save();
+            ctx.lineWidth = 3;
+            ctx.setLineDash([5, 7]);
+            ctx.strokeStyle = '#fde047';
+            ctx.shadowColor = '#facc15';
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.moveTo(simX, simY - cameraY);
+
+            for (let t = 0; t < 26; t++) {
+                simX += simVx;
+                simY += simVy;
+                simVy += GRAVITY;
+
+                if (simX < 10 || simX > width - 10) {
+                    simVx *= -0.75;
+                }
+
+                ctx.lineTo(simX, simY - cameraY);
+            }
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Render Egg Object
+        function drawEgg() {
+            ctx.save();
+            ctx.translate(egg.x, egg.y - cameraY);
+            ctx.rotate(egg.rotation);
+
+            // Glowing Outer Ring Effect
+            ctx.shadowColor = 'rgba(253, 230, 138, 0.5)';
+            ctx.shadowBlur = 10;
+
+            // Egg Shadow
+            if (!egg.isFlying && egg.currentBasket) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.beginPath();
+                ctx.ellipse(0, egg.radiusY - 2, 10, 4, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Egg Base Ivory Body
+            ctx.fillStyle = '#fffbeb';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, egg.radiusX, egg.radiusY, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Egg Outline Rim
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = '#fcd34d';
+            ctx.stroke();
+
+            // Cute Eyes & Face
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath();
+            ctx.arc(-4, -2, 1.8, 0, Math.PI * 2);
+            ctx.arc(4, -2, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Cheeks
+            ctx.fillStyle = 'rgba(244, 114, 182, 0.6)';
+            ctx.beginPath();
+            ctx.arc(-7, 1, 2.5, 0, Math.PI * 2);
+            ctx.arc(7, 1, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+        }
+
+        startBtn.addEventListener('click', () => {
+            startMenu.classList.add('hidden');
+            initGame();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            gameOverMenu.classList.add('hidden');
+            initGame();
+        });
+
+        clearRestartBtn.addEventListener('click', () => {
+            gameClearMenu.classList.add('hidden');
+            initGame();
+        });
+
+        bestScoreText.textContent = bestScore;
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
